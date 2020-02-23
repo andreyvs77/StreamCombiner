@@ -1,0 +1,11 @@
+<data><timestamp>1</timestamp><amount>10.0</amount></data>
+<data><timestamp>2</timestamp><amount>11.2</amount></data>
+<data><timestamp>5</timestamp><amount>11.5</amount></data>
+<data><timestamp>7</timestamp><amount>11.7</amount></data>
+<data><timestamp>8</timestamp><amount>11.8</amount></data>
+<data><timestamp>12</timestamp><amount>11.12</amount></data>
+<data><timestamp>14</timestamp><amount>11.14</amount></data>
+<data><timestamp>15</timestamp><amount>11.15</amount></data>
+<data><timestamp>16</timestamp><amount>11.16</amount></data>
+<data><timestamp>17</timestamp><amount>11.17</amount></data>
+<data><timestamp>18</timestamp><amount>11.18</amount></data>

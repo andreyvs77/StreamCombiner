@@ -1,47 +1,49 @@
 package com.client;
 
-import java.io.*;
-import java.net.InetAddress;
-import java.net.Socket;
+import com.client.combiner.StreamCombinerImpl;
+import com.client.combiner.StreamReceiverImpl;
+
+import javax.xml.bind.JAXBException;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 public class ClientMain {
-    public static void main(String[] ar) {
-        int serverPort = 9999; // здесь обязательно нужно указать порт к которому привязывается сервер.
-        String address = "127.0.0.1"; // это IP-адрес компьютера, где исполняется наша серверная программа.
-        // Здесь указан адрес того самого компьютера где будет исполняться и клиент.
 
-        try {
-            InetAddress ipAddress = InetAddress.getByName(address); // создаем объект который отображает вышеописанный IP-адрес.
-            System.out.println("Any of you heard of a socket with IP address " + address + " and port " + serverPort + "?");
-            Socket socket = new Socket(ipAddress, serverPort); // создаем сокет используя IP-адрес и порт сервера.
-            System.out.println("Yes! I just got hold of the program.");
+    private static final Logger logger =
+            Logger.getLogger(ClientMain.class.getName());
 
-            // Берем входной и выходной потоки сокета, теперь можем получать и отсылать данные клиентом.
-            InputStream sin = socket.getInputStream();
-            OutputStream sout = socket.getOutputStream();
-
-            // Конвертируем потоки в другой тип, чтоб легче обрабатывать текстовые сообщения.
-            DataInputStream in = new DataInputStream(sin);
-            DataOutputStream out = new DataOutputStream(sout);
-
-            // Создаем поток для чтения с клавиатуры.
-            BufferedReader keyboard = new BufferedReader(new InputStreamReader(System.in));
-            String line = null;
-            System.out.println("Type in something and press enter. Will send it to the server and tell ya what it thinks.");
-            System.out.println();
-
-            while (true) {
-                line = keyboard.readLine(); // ждем пока пользователь введет что-то и нажмет кнопку Enter.
-                System.out.println("Sending this line to the server...");
-                out.writeUTF(line); // отсылаем введенную строку текста серверу.
-                out.flush(); // заставляем поток закончить передачу данных.
-                line = in.readUTF(); // ждем пока сервер отошлет строку текста.
-                System.out.println("The server was very polite. It sent me this : " + line);
-                System.out.println("Looks like the server is pleased with us. Go ahead and enter more lines.");
-                System.out.println();
-            }
-        } catch (Exception x) {
-            x.printStackTrace();
+    public static void main(String[] args)
+            throws IOException, InterruptedException, JAXBException {
+        var streamCombiner = new StreamCombinerImpl();
+        var executor =
+                (ThreadPoolExecutor) Executors.newCachedThreadPool();
+        //read file with properties of servers
+        var serverPropsFilename = "servers.txt";
+        var serverProps = new Properties();
+        try (InputStream input = new FileInputStream(
+                args[0] + serverPropsFilename)) {
+            serverProps.load(input);
+        } catch (IOException e) {
+            logger.warning(e.getMessage());
         }
+        //create clients for the servers
+        for (Map.Entry<Object, Object> entry : serverProps.entrySet()) {
+            Object portKey = entry.getKey();
+            Object host = entry.getValue();
+            int port = Integer.parseInt((String) portKey);
+            executor.execute(new StreamReceiverImpl(streamCombiner, (String) host, port));
+
+        }
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
     }
 }

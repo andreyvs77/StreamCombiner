@@ -1,47 +1,53 @@
 package com.producer;
 
-import java.io.*;
-import java.net.ServerSocket;
-import java.net.Socket;
+import com.producer.server.StreamProducerImpl;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.logging.Logger;
 
 public class ServerMain {
 
-    public static void main(String[] ar)    {
-        int port = 9999; // случайный порт (может быть любое число от 1025 до 65535)
-        try {
-            ServerSocket ss = new ServerSocket(port); // создаем сокет сервера и привязываем его к вышеуказанному порту
-            System.out.println("Waiting for a client...");
+    private static final Logger logger =
+            Logger.getLogger(ServerMain.class.getName());
 
-            Socket socket = ss.accept(); // заставляем сервер ждать подключений и выводим сообщение когда кто-то связался с сервером
-            System.out.println("Got a client :) ... Finally, someone saw me through all the cover!");
-            System.out.println();
+    public static void main(String[] args) throws IOException {
+        var executor =
+                (ThreadPoolExecutor) Executors.newCachedThreadPool();
 
-            // Берем входной и выходной потоки сокета, теперь можем получать и отсылать данные клиенту.
-            InputStream sin = socket.getInputStream();
-            OutputStream sout = socket.getOutputStream();
+        //read file with properties of servers
+        var serverPropsFilename = "servers.txt";
+        var serverProps = new Properties();
+        try (InputStream input = new FileInputStream(
+                args[0] + serverPropsFilename)) {
+            serverProps.load(input);
+        } catch (IOException e) {
+            logger.warning(e.getMessage());
+        }
 
-            BufferedInputStream buf = new BufferedInputStream(sin,16);
-            byte[] contents = new byte[16];
+        //run all servers
+        for (Map.Entry<Object, Object> entry : serverProps.entrySet()) {
+            int port = Integer.parseInt((String)entry.getKey());
+            String fileName = (String) entry.getValue();
+            var streamProducer = new StreamProducerImpl(port);
+            logger.info("Stream producer started on port "+port);
+            var stream = Files.lines(Paths.get(args[0]+fileName));
+            executor.execute(()-> {
+                try {
+                    streamProducer.sendData(stream);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
 
-            int bytesRead = 0;
-            String strFileContents;
-            while((bytesRead = buf.read(contents)) != -1) {
-                System.out.println(new String(contents, 0, bytesRead));;
-            }
-            // Конвертируем потоки в другой тип, чтоб легче обрабатывать текстовые сообщения.
-            DataInputStream in = new DataInputStream(sin);
-            DataOutputStream out = new DataOutputStream(sout);
-
-            String line = null;
-            while(true) {
-                line = in.readUTF(); // ожидаем пока клиент пришлет строку текста.
-                System.out.println("The dumb client just sent me this line : " + line);
-                System.out.println("I'm sending it back...");
-                out.writeUTF(line); // отсылаем клиенту обратно ту самую строку текста.
-                out.flush(); // заставляем поток закончить передачу данных.
-                System.out.println("Waiting for the next line...");
-                System.out.println();
-            }
-        } catch(Exception x) { x.printStackTrace(); }
+        }
     }
 }

@@ -138,7 +138,7 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
 
     @Override
     public int removeStream(String name) {
-        streamMaxTimestamps.remove(name);
+        streamMaxTimestamps.remove(new DataDto(name, 0L));
         return streamCount.decrementAndGet();
     }
 

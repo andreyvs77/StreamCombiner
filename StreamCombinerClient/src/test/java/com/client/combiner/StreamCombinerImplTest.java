@@ -27,24 +27,25 @@ class StreamCombinerImplTest {
     }
 
     @Test
-    public void outputData_send2DiffTimestampMessages2Streams_emptyResultAndUnsentNotEmpty()
+    public void outputData_send2SameTimestampMessages2Streams_ResultCombinedAndUnsentEmpty()
             throws JAXBException {
         //Arrange
         StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
         String server1Message = testData.getServer1Messages().get(0);
-        String server3Message = testData.getServer3Messages().get(0);
+        String server2Message = testData.getServer2Messages().get(0);
         Data server1Data = testData.getSingleData(server1Message);
-        Data server3Data = testData.getSingleData(server3Message);
-        Set<Data> expectedResult = new LinkedHashSet<>();
-        Set<Data> expectedUnsentResult =
-                new LinkedHashSet<>(Arrays.asList(server1Data, server3Data));
+        Data server2Data = testData.getSingleData(server2Message);
+        //this data will be send
+        Data expectedResult =
+                testData.mergeDataObjects(server1Data, server2Data);
+        int expectedResultSize = 1;
         String stream1Name = "name1";
         String stream2Name = "name2";
         streamCombiner.addNewStream();
         streamCombiner.addNewStream();
         streamCombiner.addData(server1Message, stream1Name);
-        streamCombiner.addData(server3Message, stream2Name);
-        int expectedUnsentSize = 2;
+        streamCombiner.addData(server2Message, stream2Name);
+        int expectedUnsentSize = 0;
 
         //Act
         Set<Data> result = streamCombiner.outputData();
@@ -53,9 +54,47 @@ class StreamCombinerImplTest {
                         .getUnsentData();
 
         //Assert
-//        assertEquals(expectedResult, result);
-//        assertEquals(expectedUnsentSize, unsentData.size());
-//        assertIterableEquals(expectedUnsentResult, unsentData);
+        assertEquals(expectedResultSize, result.size());
+        assertTrue(result.contains(expectedResult));
+        assertEquals(expectedUnsentSize, unsentData.size());
+    }
+
+    @Test
+    public void outputData_send2DiffTimestampMessages2Streams_ResultNotEmptyAndUnsentNotEmpty()
+            throws JAXBException {
+        //Arrange
+        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        String server1Message = testData.getServer1Messages().get(0);
+        String server3Message = testData.getServer3Messages().get(0);
+        Data server1Data = testData.getSingleData(server1Message);
+        Data server3Data = testData.getSingleData(server3Message);
+        //this data will be send
+        Set<Data> expectedResult =
+                new LinkedHashSet<>(Arrays.asList(server1Data));
+        //this data will remain unsent
+        Set<Data> expectedUnsentResult =
+                new LinkedHashSet<>(Arrays.asList(server3Data));
+        Set<Data> unsentResult = new LinkedHashSet<>();
+        String stream1Name = "name1";
+        String stream2Name = "name2";
+        streamCombiner.addNewStream();
+        streamCombiner.addNewStream();
+        streamCombiner.addData(server1Message, stream1Name);
+        streamCombiner.addData(server3Message, stream2Name);
+        int expectedUnsentSize = 1;
+
+        //Act
+        Set<Data> result = streamCombiner.outputData();
+        ConcurrentSkipListMap<Long, BigDecimal> unsentData =
+                (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
+                        .getUnsentData();
+        unsentData.forEach((timestamp, amount) -> unsentResult
+                .add(new Data(timestamp, amount)));
+
+        //Assert
+        assertEquals(expectedResult, result);
+        assertEquals(expectedUnsentSize, unsentData.size());
+        assertIterableEquals(expectedUnsentResult, unsentResult);
     }
 
     @Test

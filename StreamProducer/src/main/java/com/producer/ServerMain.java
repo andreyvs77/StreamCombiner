@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -41,6 +42,7 @@ public class ServerMain {
             var streamProducer = new StreamProducerImpl(port);
             logger.info("Stream producer started on port " + port);
             var stream = Files.lines(Paths.get(args[0] + fileName));
+
             executor.execute(() -> {
                 try {
                     streamProducer.sendData(stream);
@@ -48,8 +50,8 @@ public class ServerMain {
                     throw new RuntimeException(e);
                 }
             });
-            executor.shutdown();
-            executor.awaitTermination(1, TimeUnit.MINUTES);
         }
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.MINUTES);
     }
 }

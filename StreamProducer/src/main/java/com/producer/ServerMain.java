@@ -9,9 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 public class ServerMain {
@@ -19,7 +19,8 @@ public class ServerMain {
     private static final Logger logger =
             Logger.getLogger(ServerMain.class.getName());
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args)
+            throws IOException, InterruptedException {
         var executor =
                 (ThreadPoolExecutor) Executors.newCachedThreadPool();
 
@@ -38,16 +39,17 @@ public class ServerMain {
             int port = Integer.parseInt((String)entry.getKey());
             String fileName = (String) entry.getValue();
             var streamProducer = new StreamProducerImpl(port);
-            logger.info("Stream producer started on port "+port);
-            var stream = Files.lines(Paths.get(args[0]+fileName));
-            executor.execute(()-> {
+            logger.info("Stream producer started on port " + port);
+            var stream = Files.lines(Paths.get(args[0] + fileName));
+            executor.execute(() -> {
                 try {
                     streamProducer.sendData(stream);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
             });
-
+            executor.shutdown();
+            executor.awaitTermination(1, TimeUnit.MINUTES);
         }
     }
 }

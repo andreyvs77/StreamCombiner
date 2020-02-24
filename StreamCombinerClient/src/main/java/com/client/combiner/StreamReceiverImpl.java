@@ -39,6 +39,7 @@ public class StreamReceiverImpl implements StreamReceiver {
                         data, e);
             }
         });
+        streamCombiner.removeStream(name);
     }
 
     @Override

@@ -1,6 +1,8 @@
 package com.client.combiner;
 
 import javax.xml.bind.JAXBException;
+import java.math.BigDecimal;
+import java.util.Map;
 import java.util.Set;
 
 public interface StreamCombiner<T> {
@@ -15,7 +17,9 @@ public interface StreamCombiner<T> {
 
     Set<T> outputData();
 
-    void addNewStream();
+    int addNewStream();
 
-    void removeStream(String name);
+    int removeStream(String name);
+
+    Map<Long, BigDecimal> getUnsentData();
 }

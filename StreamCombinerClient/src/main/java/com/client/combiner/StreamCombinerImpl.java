@@ -132,13 +132,19 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
     }
 
     @Override
-    public void addNewStream() {
-        streamCount.incrementAndGet();
+    public int addNewStream() {
+        return streamCount.incrementAndGet();
     }
 
     @Override
-    public void removeStream(String name) {
+    public int removeStream(String name) {
+        streamMaxTimestamps.remove(name);
+        return streamCount.decrementAndGet();
+    }
 
+    @Override
+    public Map<Long, BigDecimal> getUnsentData() {
+        return data;
     }
 
     private static class DataDto implements Comparable<DataDto> {

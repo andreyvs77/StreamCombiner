@@ -12,8 +12,11 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
@@ -25,7 +28,9 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
 
     private JAXBContext jaxbContext;
     private ConcurrentSkipListMap<Long, BigDecimal> data;
-    private ConcurrentSkipListMap<DataDto, Long> streamMaxTimestamps;
+    //    private ConcurrentSkipListMap<DataDto, Long> streamMaxTimestamps;
+    private ConcurrentSkipListSet<Long> streamMaxTimestamps;
+    private CopyOnWriteArraySet<String> streamNames;
     private ConcurrentLinkedQueue<Data> output;
     private AtomicInteger streamCount = new AtomicInteger();
     private final ReentrantLock lock = new ReentrantLock();
@@ -33,7 +38,8 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
     public StreamCombinerImpl() throws JAXBException {
         jaxbContext = JAXBContext.newInstance(Data.class);
         data = new ConcurrentSkipListMap<>();
-        streamMaxTimestamps = new ConcurrentSkipListMap<>();
+        streamMaxTimestamps = new ConcurrentSkipListSet<>();
+        streamNames = new CopyOnWriteArraySet<>();
         output = new ConcurrentLinkedQueue<>();
     }
 
@@ -47,13 +53,13 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
         //put data to sorted map
         Long timestamp = inputData.getTimestamp();
         BigDecimal amount = inputData.getAmount();
+        streamNames.add(streamReceiverName);
         try {
             lock.lock();
             data.computeIfPresent(timestamp, (key, value) -> value.add(amount));
             data.putIfAbsent(timestamp, amount);
             //put to streamMaxTimestamps last timestamp
-            streamMaxTimestamps
-                    .put(new DataDto(streamReceiverName, timestamp), timestamp);
+            streamMaxTimestamps.add(timestamp);
         } finally {
             lock.unlock();
         }
@@ -69,7 +75,7 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
         try {
             lock.lock();
             Set<Data> result = new LinkedHashSet<>();
-            if (streamCount.get() == streamMaxTimestamps.size()) {
+            if (streamCount.get() == streamNames.size()) {
                 logger.info("streamCount.get() - " + streamCount.get() + " = " +
                         "streamMaxTimestamps.size() - " +
                         streamMaxTimestamps.size());
@@ -78,7 +84,7 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
 
                 //all streams sent data so we can send some data to output
                 Long leastMaxTimestamp =
-                        streamMaxTimestamps.firstEntry().getValue();
+                        streamMaxTimestamps.pollFirst();
                 logger.info("leastMaxTimestamp - " + leastMaxTimestamp);
                 logger.info("before - " + data.size());
                 data.forEach((k, v) -> logger.info(k + "=" + v));
@@ -155,7 +161,8 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
 
     @Override
     public int removeStream(String name) {
-        streamMaxTimestamps.remove(new DataDto(name, 0L));
+//        streamMaxTimestamps.remove(new DataDto(name, 0L));
+        streamNames.remove(name);
         return streamCount.decrementAndGet();
     }
 

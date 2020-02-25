@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -25,6 +26,7 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
     private JAXBContext jaxbContext;
     private ConcurrentSkipListMap<Long, BigDecimal> data;
     private ConcurrentSkipListMap<DataDto, Long> streamMaxTimestamps;
+    private ConcurrentLinkedQueue<Data> output;
     private AtomicInteger streamCount = new AtomicInteger();
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -32,6 +34,7 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
         jaxbContext = JAXBContext.newInstance(Data.class);
         data = new ConcurrentSkipListMap<>();
         streamMaxTimestamps = new ConcurrentSkipListMap<>();
+        output = new ConcurrentLinkedQueue<>();
     }
 
     @Override
@@ -44,18 +47,18 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
         //put data to sorted map
         Long timestamp = inputData.getTimestamp();
         BigDecimal amount = inputData.getAmount();
-        try{
+        try {
             lock.lock();
             data.computeIfPresent(timestamp, (key, value) -> value.add(amount));
             data.putIfAbsent(timestamp, amount);
-        }
-        finally {
+            //put to streamMaxTimestamps last timestamp
+            streamMaxTimestamps
+                    .put(new DataDto(streamReceiverName, timestamp), timestamp);
+        } finally {
             lock.unlock();
         }
 
-        //put to streamMaxTimestamps last timestamp
-        streamMaxTimestamps
-                .put(new DataDto(streamReceiverName, timestamp), timestamp);
+
         //return data
         logger.fine(inputData.toString());
         return inputData;
@@ -63,45 +66,59 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
 
     @Override
     public Set<Data> outputData() {
-        Set<Data> result = new LinkedHashSet<>();
-        if (streamCount.get() == streamMaxTimestamps.size()) {
-            logger.info("streamCount.get() - "+streamCount.get()+" = "+"streamMaxTimestamps.size() - "+streamMaxTimestamps.size());
-            //all streams sent data so we can send some data to output
-            Long leastMaxTimestamp =
-                    streamMaxTimestamps.firstEntry().getValue();
-            System.out.println("leastMaxTimestamp - "+leastMaxTimestamp);
-            try {
-                lock.lock();
-                System.out.println("before - "+data.size());
-                data.forEach((k,v)->System.out.println(k+"="+v));
-                System.out.println("==before");
+        try {
+            lock.lock();
+            Set<Data> result = new LinkedHashSet<>();
+            if (streamCount.get() == streamMaxTimestamps.size()) {
+                logger.info("streamCount.get() - " + streamCount.get() + " = " +
+                        "streamMaxTimestamps.size() - " +
+                        streamMaxTimestamps.size());
+                logger.info(streamMaxTimestamps.toString());
+
+
+                //all streams sent data so we can send some data to output
+                Long leastMaxTimestamp =
+                        streamMaxTimestamps.firstEntry().getValue();
+                logger.info("leastMaxTimestamp - " + leastMaxTimestamp);
+                logger.info("before - " + data.size());
+                data.forEach((k, v) -> logger.info(k + "=" + v));
+                logger.info("==before");
                 //prepare data for output
                 Map<Long, BigDecimal> resultMap =
                         prepareData(data, leastMaxTimestamp);
                 //convert to Set<Data>
                 result = convertData(resultMap);
-                System.out.println("after");
-                data.forEach((k,v)->System.out.println(k+"="+v));
-                System.out.println("after==");
+                logger.info("after");
+                data.forEach((k, v) -> logger.info(k + "=" + v));
+                logger.info("after==");
                 if (result.size() > 0) {
                     sendDataToStdOut(result);
                 }
-            } finally {
-                lock.unlock();
+
             }
+            return result;
+        } finally {
+            lock.unlock();
         }
-        return result;
     }
 
     private void sendDataToStdOut(Set<Data> result) {
-        logger.info(Thread.currentThread().getName()+ " send data do standart output :");
-        result.forEach(System.out::println);
+        logger.info(Thread.currentThread().getName() +
+                " send data to standart output :");
+//        result.forEach(System.out::println);
+        Data data = null;
+        while ((data = output.poll()) != null)
+            System.out.println(data);
+//        output.forEach(data->);
     }
 
     private Set<Data> convertData(Map<Long, BigDecimal> input) {
         Set<Data> result = new LinkedHashSet<>();
         input.forEach(
-                (timestamp, amount) -> result.add(new Data(timestamp, amount)));
+                (timestamp, amount) -> {
+                    result.add(new Data(timestamp, amount));
+                    output.add(new Data(timestamp, amount));
+                });
         return result;
     }
 
@@ -117,9 +134,9 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
             Long maxTimestamp) {
         Map<Long, BigDecimal> result = new LinkedHashMap<>();
         input.entrySet().stream().
-                takeWhile(n -> maxTimestamp.compareTo(n.getKey())>=0).
+                takeWhile(n -> maxTimestamp.compareTo(n.getKey()) >= 0).
                 forEach(e -> {
-                    System.out.println("---"+e);
+                    logger.info("---" + e);
                     result.put(e.getKey(), e.getValue());
                     input.remove(e.getKey());
                 });
@@ -185,7 +202,8 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
             return Objects.hash(name, timestamp);
         }
 
-        @Override public String toString() {
+        @Override
+        public String toString() {
             return "DataDto{" +
                     "name='" + name + '\'' +
                     '}';

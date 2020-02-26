@@ -7,11 +7,13 @@ import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import java.io.StringReader;
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -171,49 +173,38 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
         return data;
     }
 
-    private static class DataDto implements Comparable<DataDto> {
+    private static class MaxStreamTimestamps {
+        private HashMap<String, Long> streamTimestamps;
+        private TreeSet<Long> timestamps;
+        private final ReentrantLock timeLock = new ReentrantLock();
 
-        private String name;
-        private Long timestamp;
-
-        public DataDto() {
+        public MaxStreamTimestamps() {
+            streamTimestamps = new HashMap<>();
+            timestamps = new TreeSet<>();
         }
 
-        public DataDto(String name, Long timestamp) {
-            this.name = name;
-            this.timestamp = timestamp;
-        }
-
-        @Override
-        public int compareTo(DataDto o) {
-            if (name.equals(o.name)) {
-                return 0;
+        public void put(String streamName, Long timestamp) {
+            try {
+                timeLock.lock();
+                Long timeValue = streamTimestamps.get(streamName);
+                timestamps.remove(timeValue);
+                streamTimestamps.put(streamName, timestamp);
+                timestamps.add(timestamp);
+            } finally {
+                timeLock.unlock();
             }
-            if (timestamp > o.timestamp) {
-                return 1;
+        }
+
+        public Long pollMinTimestamp() {
+            try {
+                timeLock.lock();
+                Long result = timestamps.pollFirst();
+                streamTimestamps.entrySet()
+                        .removeIf(entry -> entry.getValue().equals(result));
+                return result;
+            } finally {
+                timeLock.unlock();
             }
-            return -1;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            DataDto dataDto = (DataDto) o;
-            return name.equals(dataDto.name) &&
-                    timestamp.equals(dataDto.timestamp);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(name, timestamp);
-        }
-
-        @Override
-        public String toString() {
-            return "DataDto{" +
-                    "name='" + name + '\'' +
-                    '}';
         }
     }
 }

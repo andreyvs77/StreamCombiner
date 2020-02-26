@@ -17,7 +17,7 @@ public interface StreamCombiner<T> {
 
     Set<T> outputData();
 
-    int addNewStream();
+    int addNewStream(String streamName);
 
     int removeStream(String name);
 

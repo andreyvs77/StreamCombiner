@@ -7,21 +7,17 @@ import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import java.io.StringReader;
 import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class StreamCombinerImpl implements StreamCombiner<Data> {
 
@@ -30,19 +26,21 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
 
     private JAXBContext jaxbContext;
     private ConcurrentSkipListMap<Long, BigDecimal> data;
-    //    private ConcurrentSkipListMap<DataDto, Long> streamMaxTimestamps;
-    private ConcurrentSkipListSet<Long> streamMaxTimestamps;
+    private final MaxStreamTimestamps maxStreamTimestamps;
     private CopyOnWriteArraySet<String> streamNames;
     private ConcurrentLinkedQueue<Data> output;
-    private AtomicInteger streamCount = new AtomicInteger();
+    private ConcurrentHashMap<String, Boolean> activityStatuses;
+    private ConcurrentHashMap<String, Long> streamDataCounts;
     private final ReentrantLock lock = new ReentrantLock();
 
     public StreamCombinerImpl() throws JAXBException {
         jaxbContext = JAXBContext.newInstance(Data.class);
         data = new ConcurrentSkipListMap<>();
-        streamMaxTimestamps = new ConcurrentSkipListSet<>();
+        maxStreamTimestamps = new MaxStreamTimestamps();
         streamNames = new CopyOnWriteArraySet<>();
         output = new ConcurrentLinkedQueue<>();
+        activityStatuses = new ConcurrentHashMap<>();
+        streamDataCounts = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -58,14 +56,15 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
         streamNames.add(streamReceiverName);
         try {
             lock.lock();
+            //TODO !!!!!!!!!!!!!!!!!! use merge !!!!!!!!!!!!!!!!!!
             data.computeIfPresent(timestamp, (key, value) -> value.add(amount));
             data.putIfAbsent(timestamp, amount);
-            //put to streamMaxTimestamps last timestamp
-            streamMaxTimestamps.add(timestamp);
+            //put to maxStreamTimestamps last timestamp
+            maxStreamTimestamps.put(streamReceiverName, timestamp);
+            streamDataCounts.merge(streamReceiverName, 1L, Long::sum);
         } finally {
             lock.unlock();
         }
-
 
         //return data
         logger.fine(inputData.toString());
@@ -76,17 +75,50 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
     public Set<Data> outputData() {
         try {
             lock.lock();
+
             Set<Data> result = new LinkedHashSet<>();
-            if (streamCount.get() == streamNames.size()) {
-                logger.info("streamCount.get() - " + streamCount.get() + " = " +
-                        "streamMaxTimestamps.size() - " +
-                        streamMaxTimestamps.size());
-                logger.info(streamMaxTimestamps.toString());
+            while (
+                    (activityStatuses
+                            .entrySet()
+                            .stream()
+                            .filter(
+                                    Map.Entry::getValue).count() <=
+                            maxStreamTimestamps.getStreamCount()
+                    )
+                            && data.size() > 0
+                            && maxStreamTimestamps.getStreamNames()
+                            .containsAll(activityStatuses.entrySet().stream()
+                                    .filter(Map.Entry::getValue)
+                                    .map(entry -> entry.getKey())
+                                    .collect(
+                                            Collectors.toSet()))
+            ) {
+
+//                Set<String> list =
+//                        activityStatuses.entrySet().stream()
+//                                .filter(Map.Entry::getValue)
+//                                .map(entry->entry.getKey())
+//                                .collect(
+//                                        Collectors.toSet());
+//                System.out.println(list);
+//                System.out.println(maxStreamTimestamps.getStreamNames());
+//
+//                System.out.println(maxStreamTimestamps.getStreamNames().containsAll(list));
+
+                logger.info(
+                        "activityStatuses.get() - " +
+                                activityStatuses.entrySet().stream().filter(
+                                        Map.Entry::getValue).count() + " = " +
+                                "streamMaxTimestamps.size() - " +
+//                        streamMaxTimestamps.size()
+                                maxStreamTimestamps.getStreamCount()
+                );
+                logger.info(maxStreamTimestamps.toString());
 
 
                 //all streams sent data so we can send some data to output
                 Long leastMaxTimestamp =
-                        streamMaxTimestamps.pollFirst();
+                        maxStreamTimestamps.pollMinTimestamp();
                 logger.info("leastMaxTimestamp - " + leastMaxTimestamp);
                 logger.info("before - " + data.size());
                 data.forEach((k, v) -> logger.info(k + "=" + v));
@@ -95,7 +127,7 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
                 Map<Long, BigDecimal> resultMap =
                         prepareData(data, leastMaxTimestamp);
                 //convert to Set<Data>
-                result = convertData(resultMap);
+                result.addAll(convertData(resultMap));
                 logger.info("after");
                 data.forEach((k, v) -> logger.info(k + "=" + v));
                 logger.info("after==");
@@ -103,6 +135,25 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
                     sendDataToStdOut(result);
                 }
 
+                Set<String> list =
+                        activityStatuses.entrySet().stream()
+                                .filter(Map.Entry::getValue)
+                                .map(entry -> entry.getKey())
+                                .collect(
+                                        Collectors.toSet());
+                System.out.println("activityStatuses - " + list);
+                System.out.println("maxStreamTimestamps - " +
+                        maxStreamTimestamps.getStreamNames());
+
+                System.out.println(
+                        maxStreamTimestamps.getStreamNames().containsAll(list));
+                System.out.println(data.size() > 0);
+                System.out.println(activityStatuses
+                        .entrySet()
+                        .stream()
+                        .filter(
+                                Map.Entry::getValue).count() <=
+                        maxStreamTimestamps.getStreamCount());
             }
             return result;
         } finally {
@@ -113,11 +164,9 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
     private void sendDataToStdOut(Set<Data> result) {
         logger.info(Thread.currentThread().getName() +
                 " send data to standart output :");
-//        result.forEach(System.out::println);
         Data data = null;
         while ((data = output.poll()) != null)
             System.out.println(data);
-//        output.forEach(data->);
     }
 
     private Set<Data> convertData(Map<Long, BigDecimal> input) {
@@ -148,24 +197,20 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
                     result.put(e.getKey(), e.getValue());
                     input.remove(e.getKey());
                 });
-//        if (input.firstEntry() != null) {
-//            result.put(input.firstEntry().getKey(),
-//                    input.firstEntry().getValue());
-//            input.remove(input.firstEntry().getKey());
-//        }
         return result;
     }
 
     @Override
-    public int addNewStream() {
-        return streamCount.incrementAndGet();
+    public int addNewStream(String streamName) {
+        activityStatuses.put(streamName, true);
+        return 0;
     }
 
     @Override
     public int removeStream(String name) {
-//        streamMaxTimestamps.remove(new DataDto(name, 0L));
         streamNames.remove(name);
-        return streamCount.decrementAndGet();
+        activityStatuses.put(name, false);
+        return 0;
     }
 
     @Override
@@ -185,9 +230,12 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
 
         public void put(String streamName, Long timestamp) {
             try {
+                System.out.println(Thread.currentThread().getName());
                 timeLock.lock();
                 Long timeValue = streamTimestamps.get(streamName);
-                timestamps.remove(timeValue);
+                if (timeValue != null) {
+                    timestamps.remove(timeValue);
+                }
                 streamTimestamps.put(streamName, timestamp);
                 timestamps.add(timestamp);
             } finally {
@@ -205,6 +253,22 @@ public class StreamCombinerImpl implements StreamCombiner<Data> {
             } finally {
                 timeLock.unlock();
             }
+        }
+
+        public int getStreamCount() {
+            return streamTimestamps.size();
+        }
+
+        public Set<String> getStreamNames() {
+            return streamTimestamps.keySet();
+        }
+
+        @Override
+        public String toString() {
+            return "MaxStreamTimestamps{" +
+                    "streamTimestamps=" + streamTimestamps +
+                    ", timestamps=" + timestamps +
+                    '}';
         }
     }
 }

@@ -22,9 +22,10 @@ public class StreamReceiverImpl implements StreamReceiver {
                               int port) throws IOException {
         this.streamCombiner = streamCombiner;
         clientSocket = new Socket(host, port);
-        streamCombiner.addNewStream();
-        logger.info("client socket connected to " + host + ":" + port);
         name = host + port;
+        streamCombiner.addNewStream(name);
+        logger.info("client socket connected to " + host + ":" + port);
+
         inputStream = new BufferedReader(
                 new InputStreamReader(clientSocket.getInputStream()));
     }

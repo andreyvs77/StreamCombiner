@@ -49,9 +49,9 @@ class StreamCombinerImplTest {
         String stream1Name = "name1";
         String stream2Name = "name2";
         String stream3Name = "name3";
-        streamCombiner.addNewStream();
-        streamCombiner.addNewStream();
-        streamCombiner.addNewStream();
+        streamCombiner.addNewStream(stream1Name);
+        streamCombiner.addNewStream(stream2Name);
+        streamCombiner.addNewStream(stream3Name);
 
         var executor =
                 (ThreadPoolExecutor) Executors.newFixedThreadPool(3);
@@ -67,14 +67,14 @@ class StreamCombinerImplTest {
         executor.shutdown();
         executor.awaitTermination(1, TimeUnit.MINUTES);
 
-        Set<Data> result = streamCombiner.outputData();
+//        Set<Data> result = streamCombiner.outputData();
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
 
         //Assert
 //        assertIterableEquals(expectedResult, result);
-//        assertEquals(expectedUnsentSize, unsentData.size());
+        assertEquals(expectedUnsentSize, unsentData.size());
     }
 
     @Test
@@ -100,9 +100,9 @@ class StreamCombinerImplTest {
         String stream1Name = "name1";
         String stream2Name = "name2";
         String stream3Name = "name3";
-        streamCombiner.addNewStream();
-        streamCombiner.addNewStream();
-        streamCombiner.addNewStream();
+//        streamCombiner.addNewStream();
+//        streamCombiner.addNewStream();
+//        streamCombiner.addNewStream();
         addDataList(streamCombiner, server1Messages, stream1Name);
         addDataList(streamCombiner, server2Messages, stream2Name);
         addDataList(streamCombiner, server3Messages, stream3Name);
@@ -142,8 +142,8 @@ class StreamCombinerImplTest {
         int expectedResultSize = 1;
         String stream1Name = "name1";
         String stream2Name = "name2";
-        streamCombiner.addNewStream();
-        streamCombiner.addNewStream();
+        streamCombiner.addNewStream(stream1Name);
+        streamCombiner.addNewStream(stream2Name);
         streamCombiner.addData(server1Message, stream1Name);
         streamCombiner.addData(server2Message, stream2Name);
         int expectedUnsentSize = 0;
@@ -178,8 +178,8 @@ class StreamCombinerImplTest {
         Set<Data> unsentResult = new LinkedHashSet<>();
         String stream1Name = "name1";
         String stream2Name = "name2";
-        streamCombiner.addNewStream();
-        streamCombiner.addNewStream();
+        streamCombiner.addNewStream(stream1Name);
+        streamCombiner.addNewStream(stream2Name);
         streamCombiner.addData(server1Message, stream1Name);
         streamCombiner.addData(server3Message, stream2Name);
         int expectedUnsentSize = 1;
@@ -207,8 +207,8 @@ class StreamCombinerImplTest {
         Data data = testData.getSingleData();
         Set<Data> expectedResult = new LinkedHashSet<>();
         String streamName = "name";
-        streamCombiner.addNewStream();
-        streamCombiner.addNewStream();
+        streamCombiner.addNewStream(streamName);
+        streamCombiner.addNewStream("name2");
         streamCombiner.addData(inputMessage, streamName);
         int expectedUnsentSize = 1;
 
@@ -234,7 +234,7 @@ class StreamCombinerImplTest {
         Data data = testData.getSingleData();
         Set<Data> expectedResult = new LinkedHashSet<>(Arrays.asList(data));
         String streamName = "name";
-        streamCombiner.addNewStream();
+        streamCombiner.addNewStream(streamName);
         streamCombiner.addData(inputMessage, streamName);
         int expectedUnsentSize = 0;
 
@@ -438,6 +438,9 @@ class StreamCombinerImplTest {
                     throw new RuntimeException(e);
                 }
             }
+
+            streamCombiner.removeStream(streamName);
+            System.out.println("removed - " + streamName);
         });
     }
 

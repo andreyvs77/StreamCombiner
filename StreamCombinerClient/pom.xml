@@ -15,6 +15,9 @@
     <properties>
         <javax.activation.version>1.2.0</javax.activation.version>
         <jaxb.api.version>2.3.0</jaxb.api.version>
+        <javax.json.bind-api.version>1.0</javax.json.bind-api.version>
+        <yasson.version>1.0.6</yasson.version>
+        <javax.json.version>1.1.4</javax.json.version>
     </properties>
 
     <dependencies>
@@ -40,6 +43,22 @@
             <groupId>com.sun.xml.bind</groupId>
             <artifactId>jaxb-impl</artifactId>
             <version>${jaxb.api.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>javax.json.bind</groupId>
+            <artifactId>javax.json.bind-api</artifactId>
+            <version>${javax.json.bind-api.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse</groupId>
+            <artifactId>yasson</artifactId>
+            <version>${yasson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish</groupId>
+            <artifactId>javax.json</artifactId>
+            <version>${javax.json.version}</version>
         </dependency>
     </dependencies>
 

@@ -2,6 +2,7 @@ package com.client.combiner;
 
 import com.client.model.Data;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 
 import javax.xml.bind.JAXBException;
@@ -17,7 +18,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class StreamCombinerImplTest {
+class StreamCombinerTest {
 
     private TestData testData;
 
@@ -26,11 +27,11 @@ class StreamCombinerImplTest {
         testData = new TestData();
     }
 
-    @Test
+    @RepeatedTest(10)
     public void process_sendMessages3StreamsSimultaneously_ResultCombinedAndUnsentEmpty()
             throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
 
         List<String> server1Messages = testData.getServer1Messages();
         List<String> server2Messages = testData.getServer2Messages();
@@ -64,24 +65,27 @@ class StreamCombinerImplTest {
                 executor, new LinkedHashSet<>());
         runProcessInThread(streamCombiner, server3Messages, stream3Name,
                 executor, new LinkedHashSet<>());
+
+        streamCombiner.shutdown();
         executor.shutdown();
         executor.awaitTermination(1, TimeUnit.MINUTES);
 
-//        Set<Data> result = streamCombiner.outputData();
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
+        System.out.println(unsentData);
+        LinkedHashSet<Data> totalResult = streamCombiner.getTotalResult();
 
         //Assert
-//        assertIterableEquals(expectedResult, result);
+        assertIterableEquals(expectedResult, totalResult);
         assertEquals(expectedUnsentSize, unsentData.size());
     }
 
     @Test
-    public void outputData_sendMessages3StreamsConsecutively_ResultCombinedAndUnsentEmpty()
-            throws JAXBException {
+    public void process_sendMessages3StreamsConsecutively_ResultCombinedAndUnsentEmpty()
+            throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
 
         List<String> server1Messages = testData.getServer1Messages();
         List<String> server2Messages = testData.getServer2Messages();
@@ -100,38 +104,42 @@ class StreamCombinerImplTest {
         String stream1Name = "name1";
         String stream2Name = "name2";
         String stream3Name = "name3";
-//        streamCombiner.addNewStream();
-//        streamCombiner.addNewStream();
-//        streamCombiner.addNewStream();
-        addDataList(streamCombiner, server1Messages, stream1Name);
-        addDataList(streamCombiner, server2Messages, stream2Name);
-        addDataList(streamCombiner, server3Messages, stream3Name);
+        streamCombiner.addNewStream(stream1Name);
+        streamCombiner.addNewStream(stream2Name);
+        streamCombiner.addNewStream(stream3Name);
         int expectedUnsentSize = 0;
 
         //Act
-        Set<Data> result = streamCombiner.outputData();
+        addDataList(streamCombiner, server1Messages, stream1Name);
+        addDataList(streamCombiner, server2Messages, stream2Name);
+        addDataList(streamCombiner, server3Messages, stream3Name);
+
+        Set<Data> result = streamCombiner.getTotalResult();
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
+
+        streamCombiner.shutdown();
 
         //Assert
         assertIterableEquals(expectedResult, result);
         assertEquals(expectedUnsentSize, unsentData.size());
     }
 
-    private void addDataList(StreamCombinerImpl streamCombiner,
+    private void addDataList(StreamCombiner streamCombiner,
                              List<String> serverMessages, String streamName)
             throws JAXBException {
         for (String message : serverMessages) {
-            streamCombiner.addData(message, streamName);
+            streamCombiner.process(message, streamName);
         }
+        streamCombiner.closeStream(streamName);
     }
 
     @Test
-    public void outputData_send2SameTimestampMessages2Streams_ResultCombinedAndUnsentEmpty()
-            throws JAXBException {
+    public void process_send2SameTimestampMessages2Streams_ResultCombinedAndUnsentEmpty()
+            throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         String server1Message = testData.getServer1Messages().get(0);
         String server2Message = testData.getServer2Messages().get(0);
         Data server1Data = testData.getSingleData(server1Message);
@@ -144,12 +152,15 @@ class StreamCombinerImplTest {
         String stream2Name = "name2";
         streamCombiner.addNewStream(stream1Name);
         streamCombiner.addNewStream(stream2Name);
-        streamCombiner.addData(server1Message, stream1Name);
-        streamCombiner.addData(server2Message, stream2Name);
         int expectedUnsentSize = 0;
 
         //Act
-        Set<Data> result = streamCombiner.outputData();
+        streamCombiner.process(server1Message, stream1Name);
+        streamCombiner.process(server2Message, stream2Name);
+        streamCombiner.closeStream(stream1Name);
+        streamCombiner.closeStream(stream2Name);
+        streamCombiner.shutdown();
+        Set<Data> result = streamCombiner.getTotalResult();
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
@@ -161,31 +172,33 @@ class StreamCombinerImplTest {
     }
 
     @Test
-    public void outputData_send2DiffTimestampMessages2Streams_ResultNotEmptyAndUnsentNotEmpty()
-            throws JAXBException {
+    public void process_send2DiffTimestampMessages2Streams_ResultNotEmptyAndUnsentEmpty()
+            throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         String server1Message = testData.getServer1Messages().get(0);
         String server3Message = testData.getServer3Messages().get(0);
         Data server1Data = testData.getSingleData(server1Message);
         Data server3Data = testData.getSingleData(server3Message);
         //this data will be send
         Set<Data> expectedResult =
-                new LinkedHashSet<>(Arrays.asList(server1Data));
+                new LinkedHashSet<>(Arrays.asList(server1Data, server3Data));
         //this data will remain unsent
-        Set<Data> expectedUnsentResult =
-                new LinkedHashSet<>(Arrays.asList(server3Data));
+        Set<Data> expectedUnsentResult = new LinkedHashSet<>();
         Set<Data> unsentResult = new LinkedHashSet<>();
         String stream1Name = "name1";
         String stream2Name = "name2";
         streamCombiner.addNewStream(stream1Name);
         streamCombiner.addNewStream(stream2Name);
-        streamCombiner.addData(server1Message, stream1Name);
-        streamCombiner.addData(server3Message, stream2Name);
-        int expectedUnsentSize = 1;
+        int expectedUnsentSize = 0;
 
         //Act
-        Set<Data> result = streamCombiner.outputData();
+        streamCombiner.process(server1Message, stream1Name);
+        streamCombiner.process(server3Message, stream2Name);
+        streamCombiner.closeStream(stream1Name);
+        streamCombiner.closeStream(stream2Name);
+        streamCombiner.shutdown();
+        Set<Data> result = streamCombiner.getTotalResult();
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
@@ -199,21 +212,21 @@ class StreamCombinerImplTest {
     }
 
     @Test
-    public void outputData_sendMessage2Streams_emptyResultAndUnsentOne()
+    public void process_sendMessage2Streams_emptyResultAndUnsentOne()
             throws JAXBException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         String inputMessage = testData.getSingleMessage();
         Data data = testData.getSingleData();
         Set<Data> expectedResult = new LinkedHashSet<>();
         String streamName = "name";
         streamCombiner.addNewStream(streamName);
         streamCombiner.addNewStream("name2");
-        streamCombiner.addData(inputMessage, streamName);
         int expectedUnsentSize = 1;
 
         //Act
-        Set<Data> result = streamCombiner.outputData();
+        streamCombiner.process(inputMessage, streamName);
+        Set<Data> result = streamCombiner.getTotalResult();
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
@@ -226,20 +239,22 @@ class StreamCombinerImplTest {
     }
 
     @Test
-    public void outputData_sendMessage1Stream_returnSetAndUnsentZero()
-            throws JAXBException {
+    public void process_sendMessage1Stream_returnSetAndUnsentZero()
+            throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         String inputMessage = testData.getSingleMessage();
         Data data = testData.getSingleData();
         Set<Data> expectedResult = new LinkedHashSet<>(Arrays.asList(data));
         String streamName = "name";
         streamCombiner.addNewStream(streamName);
-        streamCombiner.addData(inputMessage, streamName);
         int expectedUnsentSize = 0;
 
         //Act
-        Set<Data> result = streamCombiner.outputData();
+        streamCombiner.process(inputMessage, streamName);
+        streamCombiner.closeStream(streamName);
+        streamCombiner.shutdown();
+        Set<Data> result = streamCombiner.getTotalResult();
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
@@ -250,22 +265,15 @@ class StreamCombinerImplTest {
     }
 
     @Test
-    public void addData_1() {
+    public void process_sendSingleMessage_returnObject() throws JAXBException {
         //Arrange
-        //Act
-        //Assert
-    }
-
-    @Test
-    public void addData_sendSingleMessage_returnObject() throws JAXBException {
-        //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         String inputMessage = testData.getSingleMessage();
         Data expectedResult = testData.getSingleData();
         String streamName = "name";
 
         //Act
-        Data result = streamCombiner.addData(inputMessage, streamName);
+        Data result = streamCombiner.process(inputMessage, streamName);
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
@@ -277,9 +285,10 @@ class StreamCombinerImplTest {
     }
 
     @Test
-    public void addData_sendMessageList_returnObjects() throws JAXBException {
+    public void process_sendMessageList_returnObjects()
+            throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         List<String> inputMessages = testData.getMessageList();
         List<Data> expectedResult = testData.getDataList();
         String streamName = "name";
@@ -288,8 +297,10 @@ class StreamCombinerImplTest {
 
         //Act
         for (String message : inputMessages) {
-            result.add(streamCombiner.addData(message, streamName));
+            result.add(streamCombiner.process(message, streamName));
         }
+        streamCombiner.shutdown();
+
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
@@ -298,20 +309,18 @@ class StreamCombinerImplTest {
 
         //Assert
         assertIterableEquals(expectedResult, result);
-        assertIterableEquals(expectedResult, unsentDataContent);
+        assertTrue(unsentDataContent.isEmpty());
     }
 
     @Test
-    public void addData_sendMessagesInMultiThreads_returnMergedObject()
+    public void process_sendMessagesInMultiThreads_returnMergedObject()
             throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         String server1Message = testData.getServer1Messages().get(0);
         String server2Message = testData.getServer2Messages().get(0);
         Data server1Data = testData.getSingleData(server1Message);
         Data server2Data = testData.getSingleData(server2Message);
-        Data expectedUnsentResult =
-                testData.mergeDataObjects(server1Data, server2Data);
         List<Data> expectedResult = Arrays.asList(server1Data, server2Data);
         String stream1Name = "name1";
         String stream2Name = "name2";
@@ -321,7 +330,6 @@ class StreamCombinerImplTest {
         var executor =
                 (ThreadPoolExecutor) Executors.newFixedThreadPool(2);
         List<Data> unsentDataContent = new ArrayList<>();
-        int expectedUnsentCount = 1;
 
         //Act
         runAddDataInThread(streamCombiner, Arrays.asList(server1Message),
@@ -330,8 +338,11 @@ class StreamCombinerImplTest {
         runAddDataInThread(streamCombiner, Arrays.asList(server2Message),
                 stream2Name,
                 executor, resultServer2);
+
+        streamCombiner.shutdown();
         executor.shutdown();
         executor.awaitTermination(1, TimeUnit.MINUTES);
+
         result = Stream.of(
                 resultServer1, resultServer2)
                 .flatMap(Collection::stream)
@@ -344,16 +355,14 @@ class StreamCombinerImplTest {
 
         //Assert
         assertIterableEquals(expectedResult, result);
-        assertTrue(unsentDataContent.contains(expectedUnsentResult));
-        assertEquals(expectedUnsentCount, unsentDataContent.size());
-
+        assertTrue(unsentDataContent.isEmpty());
     }
 
     @Test
-    public void addData_sendMessageListsInMultiThreads_returnObjects()
+    public void process_sendMessageListsInMultiThreads_returnObjects()
             throws JAXBException, InterruptedException {
         //Arrange
-        StreamCombinerImpl streamCombiner = new StreamCombinerImpl();
+        StreamCombiner streamCombiner = new StreamCombiner();
         List<String> server1Messages = testData.getServer1Messages();
         List<String> server2Messages = testData.getServer2Messages();
         List<String> server3Messages = testData.getServer3Messages();
@@ -364,11 +373,7 @@ class StreamCombinerImplTest {
                 server1DataList, server2DataList, server3DataList)
                 .flatMap(Collection::stream)
                 .collect(Collectors.toList());
-        List<Data> expectedUnsentResult =
-                testData.mergeDataLists(
-                        testData.mergeDataLists(server1DataList,
-                                server2DataList),
-                        server3DataList);
+        List<Data> expectedUnsentResult = new ArrayList<>();
         String stream1Name = "name1";
         String stream2Name = "name2";
         String stream3Name = "name3";
@@ -390,8 +395,10 @@ class StreamCombinerImplTest {
         runAddDataInThread(streamCombiner, server3Messages, stream3Name,
                 executor,
                 resultServer3);
+        streamCombiner.shutdown();
         executor.shutdown();
         executor.awaitTermination(1, TimeUnit.MINUTES);
+
         result = Stream.of(
                 server1DataList, server2DataList, server3DataList)
                 .flatMap(Collection::stream)
@@ -407,7 +414,7 @@ class StreamCombinerImplTest {
         assertIterableEquals(expectedUnsentResult, unsentDataContent);
     }
 
-    private void runAddDataInThread(StreamCombinerImpl streamCombiner,
+    private void runAddDataInThread(StreamCombiner streamCombiner,
                                     List<String> serverMessages,
                                     String streamName,
                                     ThreadPoolExecutor executor,
@@ -415,15 +422,16 @@ class StreamCombinerImplTest {
         executor.execute(() -> {
             for (String message : serverMessages) {
                 try {
-                    result.add(streamCombiner.addData(message, streamName));
+                    result.add(streamCombiner.process(message, streamName));
                 } catch (JAXBException e) {
                     throw new RuntimeException(e);
                 }
             }
+            streamCombiner.closeStream(streamName);
         });
     }
 
-    private void runProcessInThread(StreamCombinerImpl streamCombiner,
+    private void runProcessInThread(StreamCombiner streamCombiner,
                                     List<String> serverMessages,
                                     String streamName,
                                     ThreadPoolExecutor executor,
@@ -431,15 +439,14 @@ class StreamCombinerImplTest {
         executor.execute(() -> {
             for (String message : serverMessages) {
                 try {
-                    streamCombiner.addData(message, streamName);
-                    streamCombiner.outputData();
+                    streamCombiner.process(message, streamName);
                     System.out.println(message);
                 } catch (JAXBException e) {
                     throw new RuntimeException(e);
                 }
             }
 
-            streamCombiner.removeStream(streamName);
+            streamCombiner.closeStream(streamName);
             System.out.println("removed - " + streamName);
         });
     }

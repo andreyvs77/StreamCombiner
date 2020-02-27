@@ -1,14 +1,12 @@
 package com.client;
 
-import com.client.combiner.StreamCombinerImpl;
-import com.client.combiner.StreamReceiverImpl;
+import com.client.combiner.StreamCombiner;
+import com.client.combiner.StreamReceiver;
 
 import javax.xml.bind.JAXBException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executors;
@@ -23,7 +21,7 @@ public class ClientMain {
 
     public static void main(String[] args)
             throws IOException, InterruptedException, JAXBException {
-        var streamCombiner = new StreamCombinerImpl();
+        var streamCombiner = new StreamCombiner();
         var executor =
                 (ThreadPoolExecutor) Executors.newCachedThreadPool();
         //read file with properties of servers
@@ -40,7 +38,8 @@ public class ClientMain {
             Object portKey = entry.getKey();
             Object host = entry.getValue();
             int port = Integer.parseInt((String) portKey);
-            executor.execute(new StreamReceiverImpl(streamCombiner, (String) host, port));
+            executor.execute(
+                    new StreamReceiver(streamCombiner, (String) host, port));
 
         }
         executor.shutdown();

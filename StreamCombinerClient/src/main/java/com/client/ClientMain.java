@@ -14,6 +14,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
+/**
+ * Start client to process messages from Producers.
+ */
 public class ClientMain {
 
     private static final Logger logger =
@@ -42,6 +45,7 @@ public class ClientMain {
                     new StreamReceiver(streamCombiner, (String) host, port));
 
         }
+        streamCombiner.shutdown();
         executor.shutdown();
         executor.awaitTermination(1, TimeUnit.MINUTES);
     }

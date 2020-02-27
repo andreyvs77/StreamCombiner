@@ -8,6 +8,9 @@ import java.net.Socket;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * Serves to receive messages from the Producer.
+ */
 public class StreamReceiver implements Runnable {
 
     private static final Logger logger =
@@ -42,11 +45,7 @@ public class StreamReceiver implements Runnable {
         streamCombiner.closeStream(name);
     }
 
-    public void notifyAboutTimeout() {
-
-    }
-
-
+    @Override
     public void run() {
         receiveData();
     }

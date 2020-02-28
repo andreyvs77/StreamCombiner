@@ -27,6 +27,47 @@ class StreamCombinerTest {
         testData = new TestData();
     }
 
+    @Test
+    public void process_checkStreamsHang_excludeStreamForActive()
+            throws JAXBException, InterruptedException {
+        //Arrange
+        StreamCombiner streamCombiner = new StreamCombiner();
+        streamCombiner.setTimeout(1000);
+        List<String> server1Messages = testData.getServer1Messages();
+        List<String> server2Messages = testData.getServer2Messages();
+        List<Data> server1DataList = testData.getServer1DataList();
+        List<Data> server2DataList = testData.getServer2DataList();
+        String stream1Name = "name1";
+        String stream2Name = "name2";
+        streamCombiner.addNewStream(stream1Name);
+        streamCombiner.addNewStream(stream2Name);
+        //expected result
+        List<Data> expectedResult = testData.mergeDataLists(
+                server1DataList.subList(0, 4),
+                server2DataList.subList(0, 4));
+        expectedResult
+                .addAll(server1DataList.subList(4, server2DataList.size()));
+
+
+        //Act
+        for (String message : server1Messages) {
+            streamCombiner.process(message, stream1Name);
+        }
+        for (int i = 0; i < server2Messages.size(); i++) {
+            if (i == 4) {
+                Thread.sleep(2000);
+            }
+            streamCombiner.process(server2Messages.get(i), stream2Name);
+        }
+        streamCombiner.closeStream(stream1Name);
+        streamCombiner.closeStream(stream2Name);
+        LinkedHashSet<Data> result = streamCombiner.getTotalResult();
+        streamCombiner.shutdown();
+
+        //Assert
+        assertIterableEquals(expectedResult, result);
+    }
+
     @RepeatedTest(10)
     public void process_sendMessages3StreamsSimultaneously_ResultCombinedAndUnsentEmpty()
             throws JAXBException, InterruptedException {
@@ -271,6 +312,7 @@ class StreamCombinerTest {
         String inputMessage = testData.getSingleMessage();
         Data expectedResult = testData.getSingleData();
         String streamName = "name";
+        streamCombiner.addNewStream(streamName);
 
         //Act
         Data result = streamCombiner.process(inputMessage, streamName);
@@ -292,6 +334,7 @@ class StreamCombinerTest {
         List<String> inputMessages = testData.getMessageList();
         List<Data> expectedResult = testData.getDataList();
         String streamName = "name";
+        streamCombiner.addNewStream(streamName);
         List<Data> result = new ArrayList<>();
         List<Data> unsentDataContent = new ArrayList<>();
 
@@ -299,6 +342,7 @@ class StreamCombinerTest {
         for (String message : inputMessages) {
             result.add(streamCombiner.process(message, streamName));
         }
+        streamCombiner.closeStream(streamName);
         streamCombiner.shutdown();
 
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
@@ -324,6 +368,8 @@ class StreamCombinerTest {
         List<Data> expectedResult = Arrays.asList(server1Data, server2Data);
         String stream1Name = "name1";
         String stream2Name = "name2";
+        streamCombiner.addNewStream(stream1Name);
+        streamCombiner.addNewStream(stream2Name);
         List<Data> result;
         List<Data> resultServer1 = new ArrayList<>();
         List<Data> resultServer2 = new ArrayList<>();

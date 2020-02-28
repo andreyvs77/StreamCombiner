@@ -9,7 +9,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Serves to receive messages from the Producer.
+ * Serves to receive messages from the Producer and send them to the StreamCombiner fro processing.
  */
 public class StreamReceiver implements Runnable {
 
@@ -33,7 +33,12 @@ public class StreamReceiver implements Runnable {
                 new InputStreamReader(clientSocket.getInputStream()));
     }
 
-    public void receiveData() {
+    /**
+     * Receives data from StreamProducer and send it for processing to the  StreamCombiner.
+     *
+     * @throws IOException
+     */
+    public void receiveData() throws IOException {
         inputStream.lines().forEach(data -> {
             try {
                 streamCombiner.process(data, name);
@@ -43,10 +48,17 @@ public class StreamReceiver implements Runnable {
             }
         });
         streamCombiner.closeStream(name);
+        inputStream.close();
+        clientSocket.close();
     }
 
     @Override
     public void run() {
-        receiveData();
+        try {
+            receiveData();
+            logger.info("finish StreamReceiver");
+        } catch (IOException e) {
+            logger.warning(e.getMessage());
+        }
     }
 }

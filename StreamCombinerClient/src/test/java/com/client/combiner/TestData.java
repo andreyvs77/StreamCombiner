@@ -4,7 +4,6 @@ import com.client.model.Data;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
-import javax.xml.bind.Unmarshaller;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -12,6 +11,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.TreeMap;
 
+/**
+ * Prepares data for tests
+ */
 public class TestData {
 
     private JAXBContext jaxbContext;

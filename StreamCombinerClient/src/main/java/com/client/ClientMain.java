@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 /**
- * Start client to process messages from Producers.
+ * Launches StreamReceivers to receive messages from Producers.
  */
 public class ClientMain {
 
@@ -36,6 +36,7 @@ public class ClientMain {
         } catch (IOException e) {
             logger.warning(e.getMessage());
         }
+
         //create clients for the servers
         for (Map.Entry<Object, Object> entry : serverProps.entrySet()) {
             Object portKey = entry.getKey();
@@ -45,8 +46,12 @@ public class ClientMain {
                     new StreamReceiver(streamCombiner, (String) host, port));
 
         }
+        logger.warning("AFTER EXECUTOR");
         streamCombiner.shutdown();
+        logger.warning("AFTER streamCombiner.shutdown()");
         executor.shutdown();
+        logger.warning("AFTER executor.shutdown()");
         executor.awaitTermination(1, TimeUnit.MINUTES);
+        logger.warning("AFTER executor.awaitTermination");
     }
 }

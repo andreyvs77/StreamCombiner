@@ -9,6 +9,7 @@ import javax.xml.bind.JAXBException;
 import javax.xml.bind.Unmarshaller;
 import java.io.StringReader;
 import java.math.BigDecimal;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -18,16 +19,16 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
- *
+ * Serves to process messages from Producers.
  */
 public class StreamCombiner {
 
@@ -35,33 +36,85 @@ public class StreamCombiner {
             Logger.getLogger(StreamCombiner.class.getName());
 
     private JAXBContext jaxbContext;
+    /**
+     * Stores parsed input data.
+     */
     private ConcurrentSkipListMap<Long, BigDecimal> data;
+    /**
+     * Contains information about max timestamps in every stream.
+     */
     private final MaxStreamTimestamps maxStreamTimestamps;
-    //    private CopyOnWriteArraySet<String> streamNames;
+    /**
+     * Stores data that will be output in standard output.
+     */
     private ConcurrentLinkedQueue<Data> output;
+    /**
+     * Contains information about statuses every registered stream (active/inactive).
+     */
     private ConcurrentHashMap<String, Boolean> activityStatuses;
-    //    private ConcurrentHashMap<String, Long> streamDataCounts;
     private final ReentrantLock lock;
+    /**
+     * Max timeout after which the stream is considered as inactive.
+     */
+    private int timeout = 10 * 1000;
+    /**
+     * Time that need to wait all streams finish sending their data.
+     */
     private int lastDataTimeout = 1000;
+    /**
+     * Contains all data that is processed by this StreamCombiner.
+     */
     private LinkedHashSet<Data> totalResult;
     private ExecutorService executorService;
-    private Runnable outputRunner;
+    /**
+     * Serves for output data in a loop while data field contains entities.
+     */
+    private Thread outputRunner;
     private CountDownLatch outputLatch;
     private Jsonb jsonb;
+    /**
+     * Checks if streams hang. If it is true StreamActivityChecker sets such stream as inactive after timeout.
+     */
+    private StreamActivityChecker streamActivityChecker;
 
     public StreamCombiner() throws JAXBException {
+        logger.info("StreamCombiner constructor");
+        executorService = Executors.newFixedThreadPool(2);
         jsonb = JsonbBuilder.create();
         lock = new ReentrantLock();
-        outputRunner = new OutputRunner();
-        outputLatch = new CountDownLatch(1);
+        outputRunner = new Thread(new OutputRunner());
         jaxbContext = JAXBContext.newInstance(Data.class);
         data = new ConcurrentSkipListMap<>();
         maxStreamTimestamps = new MaxStreamTimestamps();
-//        streamNames = new CopyOnWriteArraySet<>();
         output = new ConcurrentLinkedQueue<>();
         activityStatuses = new ConcurrentHashMap<>();
-//        streamDataCounts = new ConcurrentHashMap<>();
         totalResult = new LinkedHashSet<>();
+        outputLatch = new CountDownLatch(1);
+        init();
+    }
+
+    /**
+     * Method for operations that have to be done after constructor.
+     */
+    private void init() {
+        streamActivityChecker = new StreamActivityChecker();
+        executorService.submit(streamActivityChecker);
+    }
+
+    public int getTimeout() {
+        return timeout;
+    }
+
+    public void setTimeout(int timeout) {
+        this.timeout = timeout;
+    }
+
+    public int getLastDataTimeout() {
+        return lastDataTimeout;
+    }
+
+    public void setLastDataTimeout(int lastDataTimeout) {
+        this.lastDataTimeout = lastDataTimeout;
     }
 
     /**
@@ -74,6 +127,12 @@ public class StreamCombiner {
      */
     public Data process(String input, String streamReceiverName)
             throws JAXBException {
+        if (!getActiveStreams().contains(streamReceiverName)) {
+            logger.warning(streamReceiverName +
+                    " is not registered or inactive. Messages from this stream will not be processed.");
+            return null;
+        }
+        streamActivityChecker.put(streamReceiverName);
         //unmarshal data
         Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
         StringReader reader = new StringReader(input);
@@ -81,18 +140,13 @@ public class StreamCombiner {
         //put data to sorted map
         Long timestamp = inputData.getTimestamp();
         BigDecimal amount = inputData.getAmount();
-//        streamNames.add(streamReceiverName);
         try {
             lock.lock();
-            //TODO !!!!!!!!!!!!!!!!!! use merge !!!!!!!!!!!!!!!!!!
-//            data.computeIfPresent(timestamp, (key, value) -> value.add(amount));
-//            data.putIfAbsent(timestamp, amount);
             data.merge(timestamp, amount, BigDecimal::add);
             //put to maxStreamTimestamps last timestamp
             maxStreamTimestamps.put(streamReceiverName, timestamp);
-//            streamDataCounts.merge(streamReceiverName, 1L, Long::sum);
-            if (executorService == null) {
-                executorService = Executors.newSingleThreadExecutor();
+            if (outputRunner.getState() == Thread.State.NEW) {//
+                logger.info("executorService.submit(outputRunner)");
                 executorService.submit(outputRunner);
             }
         } finally {
@@ -135,7 +189,7 @@ public class StreamCombiner {
                 totalResult.addAll(convertData(resultMap));
                 logger.info("unsent data after processing - ");
                 data.forEach((k, v) -> logger.info(k + "=" + v));
-                if (totalResult.size() > 0) {
+                if (output.size() > 0) {
                     sendDataToStdOut();
                 }
             }
@@ -150,7 +204,13 @@ public class StreamCombiner {
      * @throws InterruptedException
      */
     public void shutdown() throws InterruptedException {
-        outputLatch.await();
+        logger.info("start shutdown");
+        if (activityStatuses.size() > 0) {
+            outputLatch.await();
+        }
+        streamActivityChecker.shutdown();
+        logger.info("end shutdown");
+        executorService.shutdownNow();
     }
 
     /**
@@ -207,7 +267,7 @@ public class StreamCombiner {
      */
     public void addNewStream(String streamName) {
         activityStatuses.put(streamName, true);
-//        return 0;
+        streamActivityChecker.put(streamName);
     }
 
     /**
@@ -216,9 +276,7 @@ public class StreamCombiner {
      * @param name Name of the closed stream.
      */
     public void closeStream(String name) {
-//        streamNames.remove(name);
         activityStatuses.put(name, false);
-//        return 0;
     }
 
     /**
@@ -263,7 +321,7 @@ public class StreamCombiner {
                 if (timeValue != null) {
                     long countTimeValue = streamTimestamps.values().stream()
                             .filter(v -> v.equals(timeValue)).count();
-                    //if only one such timestamp in set than remove it to replace by new value
+                    //if only one such timestamp in the set than remove it for substitution it to the new value
                     if (countTimeValue == 1) {
                         timestamps.remove(timeValue);
                     }
@@ -308,6 +366,7 @@ public class StreamCombiner {
 
         @Override
         public void run() {
+            logger.info("start OutputRunner");
             loopOutput();
             logger.info("finish output; data size - " + data.size());
             logger.info("finish output" + getActiveStreams().size());
@@ -320,12 +379,73 @@ public class StreamCombiner {
                 }
             }
             outputLatch.countDown();
+            logger.info("finish OutputRunner");
         }
 
         private void loopOutput() {
             while (data.size() > 0 || getActiveStreams().size() > 0) {
+                logger.info("loopOutput running");
                 outputData();
             }
+        }
+    }
+
+    /**
+     * Checks if streams hang. If it is true StreamActivityChecker sets such stream as inactive after timeout.
+     */
+    private class StreamActivityChecker implements Runnable {
+        ConcurrentHashMap<String, Date> streamLastTimeMap =
+                new ConcurrentHashMap<>();
+        private boolean isActive = true;
+        private int tryingAttempts = timeout / 1000;
+
+        @Override
+        public void run() {
+            while (isActive && tryingAttempts > 0) {
+                try {
+                    if (getActiveStreams().size() == 0) {
+                        logger.warning(
+                                "there are no registered active streams, remaining account of the attempts - " +
+                                        tryingAttempts);
+                        tryingAttempts--;
+                    } else {
+                        tryingAttempts = timeout / 1000;
+                    }
+                    logger.info("cache running");
+                    Thread.sleep(1000);
+                    Date currenTime = new Date();
+                    streamLastTimeMap.forEachEntry(1,
+                            checkStreamActivity(currenTime));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            logger.info("finish StreamActivityChecker");
+        }
+
+        void shutdown() {
+            isActive = false;
+        }
+
+        /**
+         * Checks how long a stream does not send data to StreamCombiner. If this time is exceed the timeout this method marks such stream as inactive.
+         *
+         * @param currenTime Time when that method was called.
+         * @return Function for checking timeout.
+         */
+        Consumer<Map.Entry<String, Date>> checkStreamActivity(
+                Date currenTime) {
+            return entry -> {
+                Date lastTime = entry.getValue();
+                if (currenTime.getTime() - lastTime.getTime() >
+                        timeout) {
+                    activityStatuses.put(entry.getKey(), false);
+                }
+            };
+        }
+
+        void put(String stream) {
+            streamLastTimeMap.put(stream, new Date());
         }
     }
 

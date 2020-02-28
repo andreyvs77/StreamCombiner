@@ -28,7 +28,6 @@ public class StreamReceiver implements Runnable {
         name = host + port;
         streamCombiner.addNewStream(name);
         logger.info("client socket connected to " + host + ":" + port);
-
         inputStream = new BufferedReader(
                 new InputStreamReader(clientSocket.getInputStream()));
     }
@@ -48,7 +47,6 @@ public class StreamReceiver implements Runnable {
             }
         });
         streamCombiner.closeStream(name);
-        inputStream.close();
         clientSocket.close();
     }
 
@@ -56,7 +54,6 @@ public class StreamReceiver implements Runnable {
     public void run() {
         try {
             receiveData();
-            logger.info("finish StreamReceiver");
         } catch (IOException e) {
             logger.warning(e.getMessage());
         }

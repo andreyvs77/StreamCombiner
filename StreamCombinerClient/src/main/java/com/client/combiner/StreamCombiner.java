@@ -78,7 +78,6 @@ public class StreamCombiner {
     private StreamActivityChecker streamActivityChecker;
 
     public StreamCombiner() throws JAXBException {
-        logger.info("StreamCombiner constructor");
         executorService = Executors.newFixedThreadPool(2);
         jsonb = JsonbBuilder.create();
         lock = new ReentrantLock();
@@ -146,7 +145,6 @@ public class StreamCombiner {
             //put to maxStreamTimestamps last timestamp
             maxStreamTimestamps.put(streamReceiverName, timestamp);
             if (outputRunner.getState() == Thread.State.NEW) {//
-                logger.info("executorService.submit(outputRunner)");
                 executorService.submit(outputRunner);
             }
         } finally {
@@ -154,7 +152,6 @@ public class StreamCombiner {
         }
 
         //return data
-        logger.info(inputData.toString());
         return inputData;
     }
 
@@ -172,23 +169,14 @@ public class StreamCombiner {
             lock.lock();
             if (maxStreamTimestamps.getStreamNames()
                     .containsAll(getActiveStreams())) {
-                logger.info("available streams - " +
-                        maxStreamTimestamps.toString());
-                logger.info(
-                        "active streams - " + getActiveStreams().toString());
                 //all streams sent data so we can send some data to output
                 Long leastMaxTimestamp =
                         maxStreamTimestamps.pollMinTimestamp();
-                logger.info("leastMaxTimestamp - " + leastMaxTimestamp);
-                logger.info("unsent data before processing - " + data.size());
-                data.forEach((k, v) -> logger.info(k + "=" + v));
                 //prepare data for output
                 Map<Long, BigDecimal> resultMap =
                         prepareData(data, leastMaxTimestamp);
                 //convert to Set<Data>
                 totalResult.addAll(convertData(resultMap));
-                logger.info("unsent data after processing - ");
-                data.forEach((k, v) -> logger.info(k + "=" + v));
                 if (output.size() > 0) {
                     sendDataToStdOut();
                 }
@@ -204,12 +192,10 @@ public class StreamCombiner {
      * @throws InterruptedException
      */
     public void shutdown() throws InterruptedException {
-        logger.info("start shutdown");
         if (activityStatuses.size() > 0) {
             outputLatch.await();
         }
         streamActivityChecker.shutdown();
-        logger.info("end shutdown");
         executorService.shutdownNow();
     }
 
@@ -253,7 +239,6 @@ public class StreamCombiner {
         input.entrySet().stream().
                 takeWhile(entry -> maxTimestamp.compareTo(entry.getKey()) >= 0).
                 forEach(entry -> {
-                    logger.info("entry for output" + entry);
                     result.put(entry.getKey(), entry.getValue());
                     input.remove(entry.getKey());
                 });
@@ -317,7 +302,6 @@ public class StreamCombiner {
             try {
                 timeLock.lock();
                 Long timeValue = streamTimestamps.get(streamName);
-                logger.info("old timeValue - " + timeValue);
                 if (timeValue != null) {
                     long countTimeValue = streamTimestamps.values().stream()
                             .filter(v -> v.equals(timeValue)).count();
@@ -326,7 +310,6 @@ public class StreamCombiner {
                         timestamps.remove(timeValue);
                     }
                 }
-                logger.info("new timestamp - " + timestamp);
                 streamTimestamps.put(streamName, timestamp);
                 timestamps.add(timestamp);
             } finally {
@@ -366,10 +349,7 @@ public class StreamCombiner {
 
         @Override
         public void run() {
-            logger.info("start OutputRunner");
             loopOutput();
-            logger.info("finish output; data size - " + data.size());
-            logger.info("finish output" + getActiveStreams().size());
             if (lastDataTimeout > 0) {
                 try {
                     Thread.sleep(lastDataTimeout);
@@ -379,12 +359,10 @@ public class StreamCombiner {
                 }
             }
             outputLatch.countDown();
-            logger.info("finish OutputRunner");
         }
 
         private void loopOutput() {
             while (data.size() > 0 || getActiveStreams().size() > 0) {
-                logger.info("loopOutput running");
                 outputData();
             }
         }
@@ -411,7 +389,6 @@ public class StreamCombiner {
                     } else {
                         tryingAttempts = timeout / 1000;
                     }
-                    logger.info("cache running");
                     Thread.sleep(1000);
                     Date currenTime = new Date();
                     streamLastTimeMap.forEachEntry(1,
@@ -420,7 +397,6 @@ public class StreamCombiner {
                     throw new RuntimeException(e);
                 }
             }
-            logger.info("finish StreamActivityChecker");
         }
 
         void shutdown() {

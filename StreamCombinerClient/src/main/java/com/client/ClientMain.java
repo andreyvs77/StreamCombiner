@@ -46,12 +46,8 @@ public class ClientMain {
                     new StreamReceiver(streamCombiner, (String) host, port));
 
         }
-        logger.warning("AFTER EXECUTOR");
         streamCombiner.shutdown();
-        logger.warning("AFTER streamCombiner.shutdown()");
         executor.shutdown();
-        logger.warning("AFTER executor.shutdown()");
         executor.awaitTermination(1, TimeUnit.MINUTES);
-        logger.warning("AFTER executor.awaitTermination");
     }
 }

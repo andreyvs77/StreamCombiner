@@ -114,7 +114,6 @@ class StreamCombinerTest {
         ConcurrentSkipListMap<Long, BigDecimal> unsentData =
                 (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
                         .getUnsentData();
-        System.out.println(unsentData);
         LinkedHashSet<Data> totalResult = streamCombiner.getTotalResult();
 
         //Assert
@@ -306,7 +305,8 @@ class StreamCombinerTest {
     }
 
     @Test
-    public void process_sendSingleMessage_returnObject() throws JAXBException {
+    public void process_sendSingleMessage_returnObject()
+            throws JAXBException, InterruptedException {
         //Arrange
         StreamCombiner streamCombiner = new StreamCombiner();
         String inputMessage = testData.getSingleMessage();
@@ -316,14 +316,11 @@ class StreamCombinerTest {
 
         //Act
         Data result = streamCombiner.process(inputMessage, streamName);
-        ConcurrentSkipListMap<Long, BigDecimal> unsentData =
-                (ConcurrentSkipListMap<Long, BigDecimal>) streamCombiner
-                        .getUnsentData();
+        streamCombiner.closeStream(streamName);
+        streamCombiner.shutdown();
 
         //Assert
         assertEquals(expectedResult, result);
-        assertEquals(expectedResult, new Data(unsentData.firstEntry().getKey(),
-                unsentData.firstEntry().getValue()));
     }
 
     @Test
@@ -486,14 +483,12 @@ class StreamCombinerTest {
             for (String message : serverMessages) {
                 try {
                     streamCombiner.process(message, streamName);
-                    System.out.println(message);
                 } catch (JAXBException e) {
                     throw new RuntimeException(e);
                 }
             }
 
             streamCombiner.closeStream(streamName);
-            System.out.println("removed - " + streamName);
         });
     }
 

@@ -4,7 +4,7 @@
 
 ##### 2) run StreamProducer :
 
- `java -jar StreamProducer/target/StreamProducer-1.0-SNAPSHOT.jar  /home/aserkes/IdeaProjects/StreamCombiner/StreamProducer/src/main/resources/`
+ `java -jar StreamProducer/target/StreamProducer-1.0-SNAPSHOT.jar  /Users/andrey/IdeaProjects/StreamCombiner/StreamProducer/src/main/resources/`
   
 where :
 
@@ -12,7 +12,7 @@ where :
 
 and
 
-`/home/aserkes/IdeaProjects/StreamCombiner/StreamProducer/src/main/resources/` - path to file `servers.txt` that contains information about StreamProducers (files - `server1.txt ... server3.txt` that located in the same directory). 
+`/Users/andrey/IdeaProjects/StreamCombiner/StreamProducer/src/main/resources/` - path to file `servers.txt` that contains information about StreamProducers (files - `server1.txt ... server3.txt` that located in the same directory). 
 
 ##### 3) run StreamCombinerClient :
 

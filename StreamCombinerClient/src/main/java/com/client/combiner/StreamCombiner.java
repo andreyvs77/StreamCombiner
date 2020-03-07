@@ -291,45 +291,34 @@ public class StreamCombiner {
     private static class MaxStreamTimestamps {
         private HashMap<String, Long> streamTimestamps;
         private TreeSet<Long> timestamps;
-        private final ReentrantLock timeLock = new ReentrantLock();
 
-        public MaxStreamTimestamps() {
+        private MaxStreamTimestamps() {
             streamTimestamps = new HashMap<>();
             timestamps = new TreeSet<>();
         }
 
-        public void put(String streamName, Long timestamp) {
-            try {
-                timeLock.lock();
-                Long timeValue = streamTimestamps.get(streamName);
-                if (timeValue != null) {
-                    long countTimeValue = streamTimestamps.values().stream()
-                            .filter(v -> v.equals(timeValue)).count();
-                    //if only one such timestamp in the set than remove it for substitution it to the new value
-                    if (countTimeValue == 1) {
-                        timestamps.remove(timeValue);
-                    }
+        private void put(String streamName, Long timestamp) {
+            Long timeValue = streamTimestamps.get(streamName);
+            if (timeValue != null) {
+                long countTimeValue = streamTimestamps.values().stream()
+                        .filter(v -> v.equals(timeValue)).count();
+                //if only one such timestamp in the set than remove it for substitution it to the new value
+                if (countTimeValue == 1) {
+                    timestamps.remove(timeValue);
                 }
-                streamTimestamps.put(streamName, timestamp);
-                timestamps.add(timestamp);
-            } finally {
-                timeLock.unlock();
             }
+            streamTimestamps.put(streamName, timestamp);
+            timestamps.add(timestamp);
         }
 
-        public Long pollMinTimestamp() {
-            try {
-                timeLock.lock();
-                Long result = timestamps.pollFirst();
-                streamTimestamps.entrySet()
-                        .removeIf(entry -> entry.getValue().equals(result));
-                return result;
-            } finally {
-                timeLock.unlock();
-            }
+        private Long pollMinTimestamp() {
+            Long result = timestamps.pollFirst();
+            streamTimestamps.entrySet()
+                    .removeIf(entry -> entry.getValue().equals(result));
+            return result;
         }
 
-        public Set<String> getStreamNames() {
+        private Set<String> getStreamNames() {
             return streamTimestamps.keySet();
         }
 
@@ -399,7 +388,7 @@ public class StreamCombiner {
             }
         }
 
-        void shutdown() {
+        private void shutdown() {
             isActive = false;
         }
 
@@ -409,7 +398,7 @@ public class StreamCombiner {
          * @param currenTime Time when that method was called.
          * @return Function for checking timeout.
          */
-        Consumer<Map.Entry<String, Date>> checkStreamActivity(
+        private Consumer<Map.Entry<String, Date>> checkStreamActivity(
                 Date currenTime) {
             return entry -> {
                 Date lastTime = entry.getValue();
@@ -420,7 +409,7 @@ public class StreamCombiner {
             };
         }
 
-        void put(String stream) {
+        private void put(String stream) {
             streamLastTimeMap.put(stream, new Date());
         }
     }

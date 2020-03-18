@@ -20,10 +20,14 @@ public class StreamProducer {
     }
 
     public void sendData(Stream<String> data) throws IOException {
-        clientSocket = serverSocket.accept();
-        outputStream = new PrintWriter(clientSocket.getOutputStream(), true);
-        data.forEach(outputStream::println);
-        close();
+        try {
+            clientSocket = serverSocket.accept();
+            outputStream =
+                    new PrintWriter(clientSocket.getOutputStream(), true);
+            data.forEach(outputStream::println);
+        } finally {
+            close();
+        }
     }
 
     private void close() throws IOException {

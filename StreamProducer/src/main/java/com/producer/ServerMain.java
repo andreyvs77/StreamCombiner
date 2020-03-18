@@ -46,7 +46,7 @@ public class ServerMain {
                 try {
                     streamProducer.sendData(stream);
                 } catch (IOException e) {
-                    throw new RuntimeException(e);
+                    logger.warning(e.getMessage());
                 }
             });
         }
@@ -82,13 +82,17 @@ public class ServerMain {
      *
      * @param args Command line args.
      */
-    private static void loadProperties(String[] args) {
-        InputStream input;
+    private static void loadProperties(String[] args) throws IOException {
+        InputStream input = null;
         try {
             input = getInputStream(args, serverPropsFilename);
             serverProps.load(input);
         } catch (IOException e) {
             logger.warning(e.getMessage());
+        } finally {
+            if (input != null) {
+                input.close();
+            }
         }
     }
 

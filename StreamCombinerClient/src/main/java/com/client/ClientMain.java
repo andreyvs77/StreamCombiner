@@ -51,8 +51,8 @@ public class ClientMain {
      *
      * @param args Command line args.
      */
-    private static void loadProperties(String[] args) {
-        InputStream input;
+    private static void loadProperties(String[] args) throws IOException {
+        InputStream input = null;
         try {
             if (args != null && args.length > 0) {
                 input = new FileInputStream(
@@ -64,6 +64,10 @@ public class ClientMain {
             serverProps.load(input);
         } catch (IOException e) {
             logger.warning(e.getMessage());
+        } finally {
+            if (input != null) {
+                input.close();
+            }
         }
     }
 }

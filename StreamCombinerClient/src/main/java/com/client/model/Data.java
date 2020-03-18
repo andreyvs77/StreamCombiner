@@ -14,8 +14,14 @@ import java.util.Objects;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class Data {
 
+    /**
+     * Mandatory field. Cannot be null.
+     */
     @XmlElement(name = "timestamp")
     private Long timestamp;
+    /**
+     * Mandatory field. Cannot be null.
+     */
     @XmlElement(name = "amount")
     private BigDecimal amount;
 

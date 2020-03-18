@@ -16,10 +16,10 @@ public class StreamReceiver implements Runnable {
     private static final Logger logger =
             Logger.getLogger(StreamReceiver.class.getName());
 
-    private StreamCombiner streamCombiner;
-    private Socket clientSocket;
-    private BufferedReader inputStream;
-    private String name;
+    private final StreamCombiner streamCombiner;
+    private final Socket clientSocket;
+    private final BufferedReader inputStream;
+    private final String name;
 
     public StreamReceiver(StreamCombiner streamCombiner, String host,
                           int port) throws IOException {
@@ -38,16 +38,23 @@ public class StreamReceiver implements Runnable {
      * @throws IOException
      */
     public void receiveData() throws IOException {
-        inputStream.lines().forEach(data -> {
+        try {
             try {
-                streamCombiner.process(data, name);
-            } catch (JAXBException e) {
-                logger.log(Level.WARNING, "cannot process data - " +
-                        data, e);
+                inputStream.lines().forEach(data -> {
+                    try {
+                        streamCombiner.process(data, name);
+                    } catch (JAXBException e) {
+                        logger.log(Level.WARNING, "cannot process data - " +
+                                data, e);
+                    }
+                });
+                streamCombiner.closeStream(name);
+            } finally {
+                inputStream.close();
             }
-        });
-        streamCombiner.closeStream(name);
-        clientSocket.close();
+        } finally {
+            clientSocket.close();
+        }
     }
 
     @Override
